@@ -1,0 +1,784 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>WebRTC Viewer</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; 
+      padding: 20px; 
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+      color: #e2e8f0;
+      min-height: 100vh;
+    }
+    
+    .container { max-width: 1200px; margin: 0 auto; }
+    
+    h1 { 
+      font-size: 28px; 
+      margin-bottom: 24px; 
+      display: flex; 
+      align-items: center; 
+      gap: 12px;
+      color: #f1f5f9;
+    }
+    
+    .badge { 
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px; 
+      border-radius: 8px; 
+      font-size: 12px; 
+      font-weight: 600; 
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      color: #fff;
+      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+    }
+    
+    .card {
+      background: rgba(30, 41, 59, 0.8);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(148, 163, 184, 0.1);
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
+    }
+    
+    .card h3 { 
+      font-size: 16px; 
+      margin-bottom: 16px; 
+      color: #60a5fa;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .controls {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    
+    button {
+      padding: 12px 24px;
+      border: none;
+      border-radius: 10px;
+      font-weight: 600;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    .btn-primary {
+      background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+      color: white;
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+    }
+    
+    .btn-primary:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4);
+    }
+    
+    .btn-secondary {
+      background: rgba(148, 163, 184, 0.1);
+      color: #e2e8f0;
+      border: 1px solid rgba(148, 163, 184, 0.2);
+    }
+    
+    .btn-secondary:hover:not(:disabled) {
+      background: rgba(148, 163, 184, 0.2);
+    }
+    
+    .status {
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+      font-size: 13px;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .status-idle {
+      background: rgba(100, 116, 139, 0.2);
+      color: #94a3b8;
+      border: 1px solid rgba(100, 116, 139, 0.3);
+    }
+    
+    .status-connecting {
+      background: rgba(245, 158, 11, 0.2);
+      color: #fbbf24;
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      animation: pulse 2s ease-in-out infinite;
+    }
+    
+    .status-connected {
+      background: rgba(16, 185, 129, 0.2);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
+    
+    .video-container {
+      position: relative;
+      border-radius: 16px;
+      overflow: hidden;
+      background: #000;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    }
+    
+    video {
+      width: 100%;
+      display: block;
+      aspect-ratio: 16/9;
+    }
+
+    .stats-panel {
+      background: rgba(30, 41, 59, 0.8);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(148, 163, 184, 0.1);
+      border-radius: 12px;
+      padding: 16px;
+      margin-top: 20px;
+      display: none;
+    }
+
+    .stats-panel.visible {
+      display: block;
+    }
+
+    .stats-panel h3 {
+      font-size: 16px;
+      margin-bottom: 12px;
+      color: #60a5fa;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 12px;
+    }
+
+    .stat-item {
+      background: rgba(15, 23, 42, 0.6);
+      padding: 12px;
+      border-radius: 8px;
+      border-left: 3px solid #3b82f6;
+    }
+
+    .stat-label {
+      font-size: 11px;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 4px;
+    }
+
+    .stat-value {
+      font-size: 16px;
+      font-weight: 600;
+      color: #e2e8f0;
+      font-family: 'SF Mono', Monaco, monospace;
+    }
+
+    .stat-item.connection-type {
+      border-left-color: #10b981;
+    }
+
+    .stat-item.data-transfer {
+      border-left-color: #f59e0b;
+    }
+
+    .stat-item.packet-loss {
+      border-left-color: #ef4444;
+    }
+    
+    .log-container {
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid rgba(148, 163, 184, 0.1);
+      border-radius: 12px;
+      padding: 16px;
+      max-height: 400px;
+      overflow-y: auto;
+      font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+      font-size: 12px;
+      line-height: 1.8;
+      color: #cbd5e1;
+    }
+
+    .log-line {
+      margin: 4px 0;
+      padding: 6px 10px;
+      border-radius: 6px;
+      background: rgba(30, 41, 59, 0.4);
+      border-left: 3px solid transparent;
+      display: flex;
+      gap: 12px;
+    }
+
+    .log-line:hover {
+      background: rgba(30, 41, 59, 0.7);
+    }
+
+    .log-time {
+      color: #64748b;
+      font-weight: 600;
+      min-width: 85px;
+      flex-shrink: 0;
+    }
+
+    .log-message {
+      flex: 1;
+      color: #e2e8f0;
+    }
+
+    .log-line.log-success {
+      border-left-color: #10b981;
+      background: rgba(16, 185, 129, 0.05);
+    }
+
+    .log-line.log-success .log-message {
+      color: #6ee7b7;
+    }
+
+    .log-line.log-error {
+      border-left-color: #ef4444;
+      background: rgba(239, 68, 68, 0.05);
+    }
+
+    .log-line.log-error .log-message {
+      color: #fca5a5;
+    }
+
+    .log-line.log-warning {
+      border-left-color: #f59e0b;
+      background: rgba(245, 158, 11, 0.05);
+    }
+
+    .log-line.log-warning .log-message {
+      color: #fcd34d;
+    }
+
+    .log-line.log-info {
+      border-left-color: #3b82f6;
+      background: rgba(59, 130, 246, 0.05);
+    }
+
+    .log-line.log-info .log-message {
+      color: #93c5fd;
+    }
+
+    .log-line.log-section {
+      border-left-color: #8b5cf6;
+      background: rgba(139, 92, 246, 0.08);
+      font-weight: 600;
+    }
+
+    .log-line.log-section .log-message {
+      color: #c4b5fd;
+    }
+    
+    .log-container::-webkit-scrollbar { width: 8px; }
+    .log-container::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.4); border-radius: 8px; }
+    .log-container::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.3); border-radius: 8px; }
+    .log-container::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.5); }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h1>
+    🎥 WebRTC Stream Viewer
+    <span class="badge">
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+        <circle cx="6" cy="6" r="6" fill="currentColor"/>
+      </svg>
+      Live
+    </span>
+  </h1>
+
+  <div class="card">
+    <h3>📺 Video Stream</h3>
+    <div class="video-container">
+      <video id="video" autoplay playsinline muted></video>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>🎛️ Controls</h3>
+    <div class="controls">
+      <button id="btnConnect" class="btn-primary">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <polygon points="10 8 16 12 10 16 10 8"/>
+        </svg>
+        Connect
+      </button>
+      <button id="btnDisconnect" class="btn-secondary" disabled>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <rect x="9" y="9" width="6" height="6"/>
+        </svg>
+        Disconnect
+      </button>
+      <div class="status status-idle" id="statusDiv">
+        <svg width="8" height="8" viewBox="0 0 8 8">
+          <circle cx="4" cy="4" r="4" fill="currentColor"/>
+        </svg>
+        <span id="statusText">Disconnected</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="stats-panel" id="statsPanel">
+    <h3>📊 Connection Statistics</h3>
+    <div class="stats-grid">
+      <div class="stat-item connection-type">
+        <div class="stat-label">Connection Type</div>
+        <div class="stat-value" id="statType">—</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">Local IP</div>
+        <div class="stat-value" id="statLocalIp">—</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">Remote IP</div>
+        <div class="stat-value" id="statRemoteIp">—</div>
+      </div>
+      <div class="stat-item data-transfer">
+        <div class="stat-label">Data Received</div>
+        <div class="stat-value" id="statDataReceived">0 MB</div>
+      </div>
+      <div class="stat-item packet-loss">
+        <div class="stat-label">Packets Lost</div>
+        <div class="stat-value" id="statPacketsLost">0</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">Connection Time</div>
+        <div class="stat-value" id="statConnTime">—</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>📋 Log</h3>
+    <div class="log-container" id="logContainer"></div>
+  </div>
+</div>
+
+<script>
+(function() {
+  const WS_URL = 'ws://' + window.location.host + '/ws';
+  
+  const $video = document.getElementById('video');
+  const $btnConnect = document.getElementById('btnConnect');
+  const $btnDisconnect = document.getElementById('btnDisconnect');
+  const $statusDiv = document.getElementById('statusDiv');
+  const $statusText = document.getElementById('statusText');
+  const $logContainer = document.getElementById('logContainer');
+  const $statsPanel = document.getElementById('statsPanel');
+  
+  const $statType = document.getElementById('statType');
+  const $statLocalIp = document.getElementById('statLocalIp');
+  const $statRemoteIp = document.getElementById('statRemoteIp');
+  const $statDataReceived = document.getElementById('statDataReceived');
+  const $statPacketsLost = document.getElementById('statPacketsLost');
+  const $statConnTime = document.getElementById('statConnTime');
+
+  let ws = null;
+  let pc = null;
+  let remoteStream = null;
+  let connectStartTime = null;
+  let statsInterval = null;
+
+  function log(message, type = 'info') {
+    const time = new Date().toLocaleTimeString('en-US', { hour12: false });
+    const line = document.createElement('div');
+    line.className = `log-line log-${type}`;
+    line.innerHTML = `<span class="log-time">${time}</span><span class="log-message">${message}</span>`;
+    $logContainer.appendChild(line);
+    $logContainer.scrollTop = $logContainer.scrollHeight;
+    console.log(`[${time}] ${message}`);
+  }
+
+  function updateStatus(text, state) {
+    $statusText.textContent = text;
+    $statusDiv.className = `status status-${state}`;
+  }
+
+  function startStatsMonitoring() {
+    if (statsInterval) clearInterval(statsInterval);
+    
+    statsInterval = setInterval(async () => {
+      if (!pc) return;
+      
+      try {
+        const stats = await pc.getStats();
+        let bytesReceived = 0;
+        let packetsLost = 0;
+        
+        stats.forEach(report => {
+          if (report.type === 'inbound-rtp' && report.kind === 'video') {
+            bytesReceived = report.bytesReceived || 0;
+            packetsLost = report.packetsLost || 0;
+          }
+        });
+        
+        const mb = (bytesReceived / (1024 * 1024)).toFixed(2);
+        $statDataReceived.textContent = `${mb} MB`;
+        $statPacketsLost.textContent = packetsLost.toString();
+        
+        if (connectStartTime) {
+          const elapsed = Math.floor((Date.now() - connectStartTime) / 1000);
+          const mins = Math.floor(elapsed / 60);
+          const secs = elapsed % 60;
+          $statConnTime.textContent = `${mins}m ${secs}s`;
+        }
+        
+      } catch (e) {
+        console.error('Stats error:', e);
+      }
+    }, 1000);
+    
+    $statsPanel.classList.add('visible');
+  }
+
+  function setupPeerConnection() {
+    log('Setting up PeerConnection (LAN mode)');
+    
+    try {
+      pc = new RTCPeerConnection({
+        iceServers: [
+          { urls: "stun:stun.services.mozilla.com" },
+          { urls: "stun:stun.l.google.com:19302" },
+        ]
+      });
+      
+      remoteStream = new MediaStream();
+      $video.srcObject = remoteStream;
+
+      pc.ontrack = (ev) => {
+        log(`✓ Track received: ${ev.track.kind}`, 'success');
+        remoteStream.addTrack(ev.track);
+        $video.play().catch(e => log('⚠ Play error: ' + e.message, 'warning'));
+      };
+
+      // UPDATED: Match old code structure with { type: "ice", data: {...} }
+      pc.onicecandidate = (ev) => {
+        if (!ev.candidate) {
+          log('✓ ICE gathering complete', 'success');
+          return;
+        }
+        
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          const msg = {
+            type: 'ice',
+            data: {
+              candidate: ev.candidate.candidate,
+              sdpMLineIndex: ev.candidate.sdpMLineIndex,
+              sdpMid: ev.candidate.sdpMid
+            }
+          };
+          ws.send(JSON.stringify(msg));
+          log('→ Sent ICE candidate', 'info');
+        }
+      };
+
+      pc.onconnectionstatechange = () => {
+        log('Connection state: ' + pc.connectionState, 'info');
+        
+        if (pc.connectionState === 'connected') {
+          const elapsed = Date.now() - connectStartTime;
+          updateStatus(`Connected (${elapsed}ms)`, 'connected');
+          log(`✓✓✓ Connected in ${elapsed}ms ✓✓✓`, 'success');
+          $btnDisconnect.disabled = false;
+          
+          pc.getStats().then(stats => {
+            let localIP = null, remoteIP = null, type = null;
+            
+            stats.forEach(report => {
+              if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+                stats.forEach(r => {
+                  if (r.id === report.localCandidateId) {
+                    localIP = r.address || r.ip;
+                    type = r.candidateType;
+                  }
+                  if (r.id === report.remoteCandidateId) {
+                    remoteIP = r.address || r.ip;
+                  }
+                });
+              }
+            });
+            
+            log('═════════════════════════════════', 'section');
+            log('📊 Connection Details:', 'section');
+            log(`   Local:  ${localIP} (${type || 'unknown'})`, 'info');
+            log(`   Remote: ${remoteIP}`, 'info');
+            log('═════════════════════════════════', 'section');
+            
+            $statType.textContent = type || 'unknown';
+            $statLocalIp.textContent = localIP || '—';
+            $statRemoteIp.textContent = remoteIP || '—';
+          });
+          
+          startStatsMonitoring();
+          
+        } else if (pc.connectionState === 'failed') {
+          updateStatus('Connection failed', 'idle');
+          log('✗ Connection failed', 'error');
+          $btnConnect.disabled = false;
+          $btnDisconnect.disabled = true;
+          
+        } else if (pc.connectionState === 'disconnected') {
+          updateStatus('Disconnected', 'idle');
+          log('⚠ Connection disconnected', 'warning');
+          $btnConnect.disabled = false;
+          $btnDisconnect.disabled = true;
+          
+        } else if (pc.connectionState === 'connecting') {
+          updateStatus('Connecting...', 'connecting');
+          $btnDisconnect.disabled = true;
+          
+        } else if (pc.connectionState === 'closed') {
+          log('Connection closed', 'info');
+          $btnConnect.disabled = false;
+          $btnDisconnect.disabled = true;
+        }
+      };
+
+      pc.onicegatheringstatechange = () => {
+        log('ICE gathering state: ' + pc.iceGatheringState, 'info');
+      };
+
+      pc.oniceconnectionstatechange = () => {
+        log('ICE connection state: ' + pc.iceConnectionState, 'info');
+      };
+
+      return pc;
+      
+    } catch (e) {
+      log('✗ Failed to create PeerConnection: ' + e.message, 'error');
+      return null;
+    }
+  }
+
+  function cleanup() {
+    log('🧹 Cleaning up...', 'info');
+    
+    if (pc) {
+      try { 
+        pc.ontrack = null;
+        pc.onicecandidate = null;
+        pc.onconnectionstatechange = null;
+        pc.onicegatheringstatechange = null;
+        pc.oniceconnectionstatechange = null;
+        pc.close();
+      } catch (e) {}
+      pc = null;
+    }
+    
+    if (remoteStream) {
+      try {
+        remoteStream.getTracks().forEach(track => {
+          track.stop();
+          remoteStream.removeTrack(track);
+        });
+      } catch (e) {}
+      remoteStream = null;
+    }
+    
+    if (statsInterval) {
+      clearInterval(statsInterval);
+      statsInterval = null;
+    }
+    $statsPanel.classList.remove('visible');
+    
+    $statType.textContent = '—';
+    $statLocalIp.textContent = '—';
+    $statRemoteIp.textContent = '—';
+    $statDataReceived.textContent = '0 MB';
+    $statPacketsLost.textContent = '0';
+    $statConnTime.textContent = '—';
+    
+    try { 
+      $video.pause();
+      $video.srcObject = null;
+    } catch (e) {}
+    
+    if (ws) {
+      try { 
+        ws.onopen = null;
+        ws.onclose = null;
+        ws.onerror = null;
+        ws.onmessage = null;
+        ws.close(); 
+      } catch (e) {}
+      ws = null;
+    }
+    
+    connectStartTime = null;
+  }
+
+  function connect() {
+    log('═════════════════════════════════', 'section');
+    log('🎯 Starting WebRTC connection', 'section');
+    log('═════════════════════════════════', 'section');
+    
+    cleanup();
+    
+    connectStartTime = Date.now();
+    
+    ws = new WebSocket(WS_URL);
+
+    ws.onopen = () => {
+      log('✓ WebSocket connected to server', 'success');
+      updateStatus('WebSocket open', 'connecting');
+      
+      // Setup peer connection immediately
+      if (!setupPeerConnection()) {
+        log('✗ Failed to setup PeerConnection', 'error');
+        $btnConnect.disabled = false;
+        $btnDisconnect.disabled = true;
+        return;
+      }
+    };
+
+    ws.onclose = () => {
+      log('WebSocket disconnected', 'warning');
+      updateStatus('Disconnected', 'idle');
+      $btnConnect.disabled = false;
+      $btnDisconnect.disabled = true;
+    };
+
+    ws.onerror = (err) => {
+      log('✗ WebSocket error: ' + err.type, 'error');
+    };
+
+    ws.onmessage = async (ev) => {
+      let data = null;
+      try { 
+        data = JSON.parse(ev.data); 
+      } catch (e) { 
+        log('✗ Failed to parse message: ' + e.message, 'error');
+        return; 
+      }
+
+      // UPDATED: Match old code structure
+      switch (data.type) {
+        case 'sdp':
+          // Expecting { type: "sdp", data: { type: "offer", sdp: "..." } }
+          if (data.data && data.data.type === 'offer') {
+            log('✓ Offer received from server', 'success');
+            
+            if (!pc) {
+              log('⚠ No PeerConnection, creating new one', 'warning');
+              if (!setupPeerConnection()) {
+                log('✗ Failed to setup PeerConnection', 'error');
+                return;
+              }
+            }
+
+            try {
+              await pc.setRemoteDescription(new RTCSessionDescription(data.data));
+              log('✓ Remote description set', 'success');
+
+              const answer = await pc.createAnswer();
+              await pc.setLocalDescription(answer);
+              log('✓ Local description set (answer created)', 'success');
+
+              if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ 
+                  type: 'sdp', 
+                  data: answer
+                }));
+                log('→ Answer sent to server', 'info');
+              } else {
+                log('✗ Cannot send answer (WebSocket closed)', 'error');
+              }
+              
+            } catch (e) {
+              log('✗ Negotiation error: ' + e.message, 'error');
+            }
+          }
+          break;
+
+        case 'ice':
+          // Expecting { type: "ice", data: { candidate: "...", sdpMLineIndex: 0, sdpMid: "..." } }
+          if (data.data && data.data.candidate) {
+            if (pc && pc.remoteDescription) {
+              try { 
+                await pc.addIceCandidate(new RTCIceCandidate({
+                  candidate: data.data.candidate,
+                  sdpMLineIndex: data.data.sdpMLineIndex,
+                  sdpMid: data.data.sdpMid
+                }));
+                log('✓ Added ICE candidate', 'success');
+              } catch (e) {
+                log('⚠ Failed to add ICE candidate: ' + e.message, 'warning');
+              }
+            } else {
+              log('⚠ Received ICE but no remote description yet', 'warning');
+            }
+          }
+          break;
+          
+        default:
+          log('⚠ Unknown message type: ' + data.type, 'warning');
+      }
+    };
+  }
+
+  $btnConnect.addEventListener('click', () => {
+    $btnConnect.disabled = true;
+    $btnDisconnect.disabled = true;
+    updateStatus('Connecting...', 'connecting');
+    connect();
+  });
+
+  $btnDisconnect.addEventListener('click', () => {
+    log('═════════════════════════════════', 'section');
+    log('🛑 User disconnected', 'section');
+    log('═════════════════════════════════', 'section');
+    
+    cleanup();
+    updateStatus('Disconnected', 'idle');
+    $btnConnect.disabled = false;
+    $btnDisconnect.disabled = true;
+  });
+
+  $btnConnect.disabled = false;
+  $btnDisconnect.disabled = true;
+  
+  log('═════════════════════════════════', 'section');
+  log('📡 WebRTC Viewer Ready', 'section');
+  log('   ✓ Server: ' + WS_URL, 'info');
+  log('   ✓ Click Connect to start', 'info');
+  log('═════════════════════════════════', 'section');
+})();
+</script>
+</body>
+</html>
