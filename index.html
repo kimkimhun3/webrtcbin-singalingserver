@@ -205,6 +205,22 @@
       font-family: 'SF Mono', Monaco, monospace;
     }
 
+    .stat-item.codec-info {
+      border-left-color: #8b5cf6;
+    }
+
+    .stat-item.resolution-info {
+      border-left-color: #06b6d4;
+    }
+
+    .stat-item.fps-info {
+      border-left-color: #ec4899;
+    }
+
+    .stat-item.bitrate-info {
+      border-left-color: #f97316;
+    }
+
     .stat-item.connection-type {
       border-left-color: #10b981;
     }
@@ -323,8 +339,8 @@
 
   <div class="card">
     <h3>📺 Video Stream</h3>
-    <div class="video-container">
-      <video id="video" autoplay playsinline muted></video>
+    <div class="video-container" id="videoContainer">
+      <video id="video" autoplay playsinline muted controls></video>
     </div>
   </div>
 
@@ -355,8 +371,24 @@
   </div>
 
   <div class="stats-panel" id="statsPanel">
-    <h3>📊 Connection Statistics</h3>
+    <h3>📊 Stream Information</h3>
     <div class="stats-grid">
+      <div class="stat-item codec-info">
+        <div class="stat-label">Video Codec</div>
+        <div class="stat-value" id="statCodec">—</div>
+      </div>
+      <div class="stat-item resolution-info">
+        <div class="stat-label">Resolution</div>
+        <div class="stat-value" id="statResolution">—</div>
+      </div>
+      <div class="stat-item fps-info">
+        <div class="stat-label">Frame Rate</div>
+        <div class="stat-value" id="statFps">—</div>
+      </div>
+      <div class="stat-item bitrate-info">
+        <div class="stat-label">Bitrate</div>
+        <div class="stat-value" id="statBitrate">—</div>
+      </div>
       <div class="stat-item connection-type">
         <div class="stat-label">Connection Type</div>
         <div class="stat-value" id="statType">—</div>
@@ -402,6 +434,10 @@
   const $logContainer = document.getElementById('logContainer');
   const $statsPanel = document.getElementById('statsPanel');
   
+  const $statCodec = document.getElementById('statCodec');
+  const $statResolution = document.getElementById('statResolution');
+  const $statFps = document.getElementById('statFps');
+  const $statBitrate = document.getElementById('statBitrate');
   const $statType = document.getElementById('statType');
   const $statLocalIp = document.getElementById('statLocalIp');
   const $statRemoteIp = document.getElementById('statRemoteIp');
@@ -430,6 +466,45 @@
     $statusDiv.className = `status status-${state}`;
   }
 
+  function parseSDPForStreamInfo(sdp) {
+    try {
+      // Extract codec from SDP
+      const codecMatch = sdp.match(/a=rtpmap:\d+ (H264|H265|VP8|VP9|AV1)/i);
+      if (codecMatch) {
+        const codec = codecMatch[1].toUpperCase();
+        $statCodec.textContent = codec;
+        log(`📹 Codec: ${codec}`, 'info');
+      }
+
+      // Extract framerate from SDP
+      const fpsMatch = sdp.match(/a=framerate:(\d+(?:\.\d+)?)/);
+      if (fpsMatch) {
+        const fps = parseFloat(fpsMatch[1]);
+        $statFps.textContent = `${fps} fps`;
+        log(`🎬 Framerate: ${fps} fps`, 'info');
+      }
+
+      // Extract bitrate from SDP (TIAS or AS)
+      const tiasMatch = sdp.match(/b=TIAS:(\d+)/);
+      if (tiasMatch) {
+        const bps = parseInt(tiasMatch[1]);
+        const kbps = Math.round(bps / 1000);
+        $statBitrate.textContent = `${kbps} kbps`;
+        log(`💾 Bitrate: ${kbps} kbps`, 'info');
+      } else {
+        const asMatch = sdp.match(/b=AS:(\d+)/);
+        if (asMatch) {
+          const kbps = parseInt(asMatch[1]);
+          $statBitrate.textContent = `${kbps} kbps`;
+          log(`💾 Bitrate: ${kbps} kbps`, 'info');
+        }
+      }
+
+    } catch (e) {
+      log('⚠ Failed to parse SDP: ' + e.message, 'warning');
+    }
+  }
+
   function startStatsMonitoring() {
     if (statsInterval) clearInterval(statsInterval);
     
@@ -445,6 +520,53 @@
           if (report.type === 'inbound-rtp' && report.kind === 'video') {
             bytesReceived = report.bytesReceived || 0;
             packetsLost = report.packetsLost || 0;
+            
+            // Calculate real-time bitrate
+            if (report.bytesReceived && report.timestamp) {
+              if (!window.lastBytesReceived) {
+                window.lastBytesReceived = report.bytesReceived;
+                window.lastTimestamp = report.timestamp;
+              } else {
+                const bytesDelta = report.bytesReceived - window.lastBytesReceived;
+                const timeDelta = (report.timestamp - window.lastTimestamp) / 1000;
+                if (timeDelta > 0) {
+                  const currentBitrate = Math.round((bytesDelta * 8) / timeDelta / 1000);
+                  window.lastBytesReceived = report.bytesReceived;
+                  window.lastTimestamp = report.timestamp;
+                  
+                  if (currentBitrate > 0) {
+                    $statBitrate.textContent = `${currentBitrate} kbps`;
+                  }
+                }
+              }
+            }
+
+            // Get actual FPS
+            if (report.framesPerSecond) {
+              const fps = Math.round(report.framesPerSecond);
+              $statFps.textContent = `${fps} fps`;
+            }
+
+            // Get codec from stats
+            if (report.mimeType) {
+              const codecMatch = report.mimeType.match(/video\/(.*)/i);
+              if (codecMatch) {
+                const codec = codecMatch[1].toUpperCase().replace('X-', '');
+                $statCodec.textContent = codec;
+              }
+            }
+
+            // Get resolution
+            if (report.frameWidth && report.frameHeight) {
+              $statResolution.textContent = `${report.frameWidth}×${report.frameHeight}`;
+            }
+          }
+
+          // Alternative: check track stats
+          if (report.type === 'track' && report.kind === 'video') {
+            if (report.frameWidth && report.frameHeight) {
+              $statResolution.textContent = `${report.frameWidth}×${report.frameHeight}`;
+            }
           }
         });
         
@@ -484,10 +606,23 @@
       pc.ontrack = (ev) => {
         log(`✓ Track received: ${ev.track.kind}`, 'success');
         remoteStream.addTrack(ev.track);
+        
+        // Get track settings
+        if (ev.track.kind === 'video') {
+          const settings = ev.track.getSettings();
+          if (settings.width && settings.height) {
+            $statResolution.textContent = `${settings.width}×${settings.height}`;
+            log(`📐 Resolution: ${settings.width}×${settings.height}`, 'info');
+          }
+          if (settings.frameRate) {
+            $statFps.textContent = `${settings.frameRate} fps`;
+            log(`🎬 Track FPS: ${settings.frameRate} fps`, 'info');
+          }
+        }
+        
         $video.play().catch(e => log('⚠ Play error: ' + e.message, 'warning'));
       };
 
-      // UPDATED: Match old code structure with { type: "ice", data: {...} }
       pc.onicecandidate = (ev) => {
         if (!ev.candidate) {
           log('✓ ICE gathering complete', 'success');
@@ -617,12 +752,19 @@
     }
     $statsPanel.classList.remove('visible');
     
+    $statCodec.textContent = '—';
+    $statResolution.textContent = '—';
+    $statFps.textContent = '—';
+    $statBitrate.textContent = '—';
     $statType.textContent = '—';
     $statLocalIp.textContent = '—';
     $statRemoteIp.textContent = '—';
     $statDataReceived.textContent = '0 MB';
     $statPacketsLost.textContent = '0';
     $statConnTime.textContent = '—';
+    
+    window.lastBytesReceived = null;
+    window.lastTimestamp = null;
     
     try { 
       $video.pause();
@@ -658,7 +800,6 @@
       log('✓ WebSocket connected to server', 'success');
       updateStatus('WebSocket open', 'connecting');
       
-      // Setup peer connection immediately
       if (!setupPeerConnection()) {
         log('✗ Failed to setup PeerConnection', 'error');
         $btnConnect.disabled = false;
@@ -687,10 +828,8 @@
         return; 
       }
 
-      // UPDATED: Match old code structure
       switch (data.type) {
         case 'sdp':
-          // Expecting { type: "sdp", data: { type: "offer", sdp: "..." } }
           if (data.data && data.data.type === 'offer') {
             log('✓ Offer received from server', 'success');
             
@@ -703,6 +842,11 @@
             }
 
             try {
+              // Parse SDP for stream info
+              if (data.data.sdp) {
+                parseSDPForStreamInfo(data.data.sdp);
+              }
+
               await pc.setRemoteDescription(new RTCSessionDescription(data.data));
               log('✓ Remote description set', 'success');
 
@@ -727,7 +871,6 @@
           break;
 
         case 'ice':
-          // Expecting { type: "ice", data: { candidate: "...", sdpMLineIndex: 0, sdpMid: "..." } }
           if (data.data && data.data.candidate) {
             if (pc && pc.remoteDescription) {
               try { 
